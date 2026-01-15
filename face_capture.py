@@ -3,7 +3,16 @@ import time
 import os
 import requests
 import base64
+import threading
 from pop import Util
+
+# Import message receiver to run in background
+try:
+    from message_receiver import run_in_background as start_message_receiver
+    MESSAGE_RECEIVER_AVAILABLE = True
+except ImportError:
+    MESSAGE_RECEIVER_AVAILABLE = False
+    print("Note: message_receiver.py not found. Messages from PC will not be received.")
 
 class FaceCapture:
     def __init__(self, save_folder="captured_faces", width=640, height=480, webhook_url=None):
@@ -248,11 +257,18 @@ class FaceCapture:
 
 def main():
     """Main entry point for the face capture system."""
+    # Start message receiver in background to receive messages from PC
+    if MESSAGE_RECEIVER_AVAILABLE:
+        print("Starting message receiver...")
+        start_message_receiver()
+        print("✓ Message receiver started (running in background)")
+        print("  Messages from PC will be displayed in this terminal\n")
+    
     # Configure webhook URL - Replace with your PC's IP address and port
-    # Default: "http://172.23.150.8:5000/webhook"
+    # Default: "http://192.168.56.1:5000/webhook"
     # Can be overridden with WEBHOOK_URL environment variable
     # Set to None to disable webhook sending
-    default_webhook = "http://172.23.150.8:5000/webhook"
+    default_webhook = "http://192.168.56.1:5000/webhook"
     webhook_url = os.getenv('WEBHOOK_URL', default_webhook)  # Use environment variable or default
     
     # Initialize and run the face capture system
