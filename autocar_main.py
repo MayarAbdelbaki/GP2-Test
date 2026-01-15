@@ -13,8 +13,13 @@ import threading
 import http.server
 import socketserver
 import json
+import warnings
 from datetime import datetime
 from pop import Util
+
+# Suppress GTK warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+os.environ['GTK_WARNING'] = '0'
 
 # ==================== CONFIGURATION ====================
 # PC Configuration
@@ -193,6 +198,7 @@ class FaceCapture:
     def _send_to_webhook(self, image_path):
         """Send image to PC webhook server."""
         if not self.webhook_url:
+            print("  ⚠ Webhook URL not configured, skipping send")
             return False
         
         try:
@@ -208,7 +214,10 @@ class FaceCapture:
                 'timestamp': time.time()
             }
             
+            print(f"  Sending image to PC: {self.webhook_url}")
+            
             # Send POST request to webhook
+            print(f"  Sending image to PC: {self.webhook_url}")
             response = requests.post(
                 self.webhook_url,
                 json=payload,
@@ -216,10 +225,11 @@ class FaceCapture:
             )
             
             if response.status_code == 200:
-                print(f"✓ Image sent to PC successfully")
+                print(f"  ✓ Image sent to PC successfully")
                 return True
             else:
-                print(f"✗ Webhook request failed with status {response.status_code}")
+                print(f"  ✗ Webhook request failed with status {response.status_code}")
+                print(f"     Response: {response.text[:200]}")
                 return False
                 
         except requests.exceptions.ConnectTimeout:
