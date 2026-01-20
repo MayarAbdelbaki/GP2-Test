@@ -4,22 +4,52 @@ Detects faces, sends images to PC, and receives messages from PC.
 Run this on autocar: python3 autocar_main.py
 """
 
+import os
+import sys
+import warnings
+
+# Suppress GTK warnings BEFORE importing other modules
+os.environ['GTK_WARNING'] = '0'
+os.environ['G_MESSAGES_DEBUG'] = '0'
+os.environ['NO_AT_BRIDGE'] = '1'  # Disable accessibility bridge warnings
+
+# Filter warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*GTK.*")
+warnings.filterwarnings("ignore", message=".*Gtk.*")
+warnings.filterwarnings("ignore", message=".*theme.*")
+warnings.filterwarnings("ignore", message=".*murrine.*")
+
+# Redirect stderr to filter GTK warnings
+class GTKWarningFilter:
+    """Filter to suppress GTK warnings from stderr."""
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+    
+    def write(self, message):
+        # Filter out GTK warnings
+        if 'Gtk-WARNING' in message or 'GTK-WARNING' in message:
+            if 'murrine' in message or 'theme' in message:
+                return  # Suppress these warnings
+        self.original_stderr.write(message)
+    
+    def flush(self):
+        self.original_stderr.flush()
+
+# Apply filter to stderr
+sys.stderr = GTKWarningFilter(sys.stderr)
+
 import cv2
 import time
-import os
 import requests
 import base64
 import threading
 import http.server
 import socketserver
 import json
-import warnings
 from datetime import datetime
 from pop import Util
-
-# Suppress GTK warnings
-warnings.filterwarnings("ignore", category=UserWarning)
-os.environ['GTK_WARNING'] = '0'
+import pyttsx3
 
 # ==================== CONFIGURATION ====================
 # PC Configuration
@@ -32,10 +62,77 @@ MESSAGE_PORT = 5001  # Port for receiving messages from PC
 MESSAGE_HOST = "0.0.0.0"  # Listen on all interfaces
 
 # Face Detection Configuration
-SAVE_FOLDER = "captured_faces"
+SAVE_FOLDER = "captured_faces"  # Images saved here
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 CAPTURE_INTERVAL = 5  # Wait 5 seconds between captures
+
+# ==================== TEXT TO SPEECH ====================
+def init_tts_engine():
+    """Initialize text-to-speech engine."""
+    try:
+        engine = pyttsx3.init()
+        # Set speech rate (optional - adjust as needed)
+        engine.setProperty('rate', 150)  # Speed of speech
+        return engine
+    except Exception as e:
+        print(f"⚠ Warning: Could not initialize TTS engine: {str(e)}")
+        print(f"  TTS will be disabled. Install pyttsx3: pip3 install pyttsx3")
+        return None
+
+# TTS availability flag (we'll create engine instances as needed)
+TTS_AVAILABLE = True
+try:
+    # Test if TTS is available
+    test_engine = pyttsx3.init()
+    test_engine = None  # Clean up test
+except:
+    TTS_AVAILABLE = False
+
+def speak_message(message):
+    """Convert message to speech if it contains person information."""
+    if not TTS_AVAILABLE:
+        return
+    
+    try:
+        # Check if message contains "Person:" information
+        if "Person:" in message or "person" in message.lower():
+            # Extract person name or use default message
+            if "unknown person" in message.lower():
+                speech_text = "There is unknown person"
+            elif "Person:" in message:
+                # Extract person name
+                parts = message.split("Person:", 1)
+                if len(parts) > 1:
+                    person_name = parts[1].strip()
+                    if person_name:
+                        speech_text = f"There is {person_name}"
+                    else:
+                        speech_text = "There is unknown person"
+                else:
+                    speech_text = "There is unknown person"
+            else:
+                speech_text = "There is unknown person"
+            
+            # Speak the message in a separate thread to avoid blocking
+            # Create a new engine instance each time to ensure it works every time
+            def speak():
+                try:
+                    # Create new engine instance for each message to avoid getting stuck
+                    engine = pyttsx3.init()
+                    engine.setProperty('rate', 150)  # Speed of speech
+                    engine.say(speech_text)
+                    engine.runAndWait()
+                    # Engine will be cleaned up automatically after use
+                except Exception as e:
+                    print(f"⚠ Error in TTS: {str(e)}")
+            
+            # Run TTS in background thread
+            tts_thread = threading.Thread(target=speak, daemon=True)
+            tts_thread.start()
+    except Exception as e:
+        print(f"⚠ Error processing TTS: {str(e)}")
+
 
 # ==================== MESSAGE RECEIVER ====================
 class MessageHandler(http.server.SimpleHTTPRequestHandler):
@@ -64,6 +161,10 @@ class MessageHandler(http.server.SimpleHTTPRequestHandler):
                 
                 print(f"\n[{time_str}] Message from {source}:")
                 print(f"  {message}\n")
+                
+                # Convert to speech if it's a person detection message
+                if "Person:" in message:
+                    speak_message(message)
                 
                 # Send success response
                 self.send_response(200)
@@ -217,7 +318,6 @@ class FaceCapture:
             print(f"  Sending image to PC: {self.webhook_url}")
             
             # Send POST request to webhook
-            print(f"  Sending image to PC: {self.webhook_url}")
             response = requests.post(
                 self.webhook_url,
                 json=payload,
@@ -354,6 +454,10 @@ def main():
     print("✓ Message receiver started (running in background)")
     print(f"  Listening on port {MESSAGE_PORT} for messages from PC")
     print(f"  PC will send messages to: http://<AUTOCAR_IP>:{MESSAGE_PORT}/message")
+    if TTS_AVAILABLE:
+        print("  ✓ Text-to-speech enabled - will announce person detection")
+    else:
+        print("  ⚠ Text-to-speech disabled - install pyttsx3 to enable")
     print()
     
     # Initialize and run face capture
