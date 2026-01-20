@@ -49,7 +49,18 @@ import socketserver
 import json
 from datetime import datetime
 from pop import Util
-import pyttsx3
+
+# Try to import pyttsx3 - handle Python version incompatibility gracefully
+try:
+    import pyttsx3
+    PYTTSX3_AVAILABLE = True
+except (ImportError, SyntaxError) as e:
+    # pyttsx3 requires Python 3.7+ (uses 'from __future__ import annotations')
+    # If running on Python 3.6 or earlier, TTS will be disabled
+    PYTTSX3_AVAILABLE = False
+    pyttsx3 = None
+    print(f"⚠ Warning: pyttsx3 not available (requires Python 3.7+): {str(e)}")
+    print(f"  TTS functionality will be disabled. Upgrade to Python 3.7+ to enable TTS.")
 
 # ==================== CONFIGURATION ====================
 # PC Configuration
@@ -70,6 +81,8 @@ CAPTURE_INTERVAL = 5  # Wait 5 seconds between captures
 # ==================== TEXT TO SPEECH ====================
 def init_tts_engine():
     """Initialize text-to-speech engine."""
+    if not PYTTSX3_AVAILABLE:
+        return None
     try:
         engine = pyttsx3.init()
         # Set speech rate (optional - adjust as needed)
@@ -81,17 +94,18 @@ def init_tts_engine():
         return None
 
 # TTS availability flag (we'll create engine instances as needed)
-TTS_AVAILABLE = True
-try:
-    # Test if TTS is available
-    test_engine = pyttsx3.init()
-    test_engine = None  # Clean up test
-except:
-    TTS_AVAILABLE = False
+TTS_AVAILABLE = PYTTSX3_AVAILABLE
+if PYTTSX3_AVAILABLE:
+    try:
+        # Test if TTS is available
+        test_engine = pyttsx3.init()
+        test_engine = None  # Clean up test
+    except:
+        TTS_AVAILABLE = False
 
 def speak_message(message):
     """Convert message to speech if it contains person information."""
-    if not TTS_AVAILABLE:
+    if not TTS_AVAILABLE or not PYTTSX3_AVAILABLE:
         return
     
     try:
