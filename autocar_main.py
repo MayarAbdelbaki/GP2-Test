@@ -1,8 +1,4 @@
-"""
-All-in-One Autocar Main Program
-Detects faces, sends images to PC, and receives messages from PC.
-Run this on autocar: python3 autocar_main.py
-"""
+
 
 import os
 import sys
@@ -484,3 +480,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
